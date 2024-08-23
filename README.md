@@ -8,13 +8,13 @@ This application provides a way to anonymize sensitive information in text files
 - Customizable Word Replacement: Replace specific words in a text file with a specified replacement word.
 - Modular Design: The application is designed with modularity in mind, separating the CLI, core functionality, and custom recognizers into different files.
 
-## Instalaltion
+## Installation
 
 1. Clone the repository
 
 ```bash
 git clone https://github.com/MWest2020/anonymize.git
-cd anonymize-text
+cd anonymize
 ```
 
 2. Set up the environment:
@@ -55,7 +55,7 @@ The command-line interface (CLI) provides two main functionalities:
 1. Default Anonymization:
 
 ```bash
-python -m anonymize_text <file_path>
+python -m anonymize.cli path/to/your/file.txt
 ```
 
 - Description: This command will analyze the specified text file, detect entities, and anonymize them by replacing them with the default word "ANONYMIZED".
@@ -63,15 +63,15 @@ python -m anonymize_text <file_path>
 2. Direct Word Replacement (Single File):
 
 ```bash
-python -m anonymize_text <file_path> -R <original_word> <replacement_word>
+python -m anonymize <file_path> -R <original_word> <replacement_word>
 ```
 
 - Description: This command will directly replace the occurrences of <original_word> with <replacement_word> in the specified text file.
 
-3. Batch Anonymuzation (Directory)
+3. Batch Anonymization (Directory)
 
 ```bash
-python -m anonymize_text -D <directory_path>
+python -m anonymize -D <directory_path>
 ```
 
 - Description: This command will analyze all text files within the specified directory, detect entities, and anonymize them by replacing them with the default word "ANONYMIZED".
@@ -79,7 +79,7 @@ python -m anonymize_text -D <directory_path>
 4. Batch Word Replacement(Directory)
 
 ```bash
-python -m anonymize_text -D <directory_path> -R <original_word> <replacement_word>
+python -m anonymize -D <directory_path> -R <original_word> <replacement_word>
 ```
 
 - Description: This command will directly replace the occurrences of <original_word> with <replacement_word> in all text files within the specified directory.
