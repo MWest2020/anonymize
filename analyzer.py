@@ -33,7 +33,11 @@ class Analyzer:
         logging.debug(f"Sending text to the Analyzer API at {self.ANALYZE_ENDPOINT}")
         request_payload = {
             "text": text,
-            "language": language
+            "language": language,
+            "entities": ["PERSON", "LOCATION", "EMAIL_ADDRESS", "PHONE_NUMBER", "DATE_TIME", "NRP", "IBAN_CODE", "CREDIT_CARD"],
+            "correlation_id": "1",
+            "score_threshold": 0.7,
+            "return_decision_process": True
         }
         try:
             response = requests.post(self.ANALYZE_ENDPOINT, json=request_payload, timeout=self.TIMEOUT_SECONDS)

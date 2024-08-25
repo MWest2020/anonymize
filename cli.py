@@ -1,4 +1,7 @@
 import argparse
+import os
+import logging
+from .analyzer import Analyzer
 from .anonymizer import Anonymizer
 
 class CLI:
@@ -9,44 +12,66 @@ class CLI:
         self.parser.add_argument("-R", "--replace", metavar="custom_word", help="Specify a word to be treated as PII and replaced in the file.")
         self.parser.add_argument("--anonymizer-url", default="http://localhost:5001", help="Custom Anonymizer API URL")
         self.parser.add_argument("--analyzer-url", default="http://localhost:5002", help="Custom Analyzer API URL")
+        self.parser.add_argument("--language", default="en", choices=["en", "nl"], help="Language of the text (en for English, nl for Dutch)")
+        self.parser.add_argument("--debug", action="store_true", help="Enable debug logging")
 
     def run(self):
         args = self.parser.parse_args()
-        anonymizer = Anonymizer(anonymizer_url=args.anonymizer_url, analyzer_url=args.analyzer_url)
+        
+        # Set up logging
+        log_level = logging.DEBUG if args.debug else logging.INFO
+        logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(message)s')
 
-        if not anonymizer.api_available:
-            print("Warning: One or both APIs are not available. Anonymization features may not work correctly.")
+        analyzer = Analyzer(analyzer_url=args.analyzer_url)
+        anonymizer = Anonymizer(anonymizer_url=args.anonymizer_url)
+
+        if not analyzer.api_available or not anonymizer.api_available:
+            logging.warning("One or both APIs are not available. Anonymization features may not work correctly.")
             return
 
         if args.directory:
-            self.anonymize_directory(args.directory, args.replace, anonymizer)
+            self.anonymize_directory(args.directory, args.replace, analyzer, anonymizer, args.language)
         elif args.file_path:
-            self.process_text(args, anonymizer)
+            self.process_text(args, analyzer, anonymizer)
         else:
-            print("Please specify a file or directory to process.")
+            logging.error("Please specify a file or directory to process.")
 
-    def process_text(self, args, anonymizer):
-        anonymizer.anonymize_text_file(args.file_path, custom_word=args.replace)
+    def process_text(self, args, analyzer, anonymizer):
+        content = self.load_text_file(args.file_path)
+        if content is None:
+            return
 
-    def anonymize_directory(self, directory_path, custom_word, anonymizer):
-        print(f"Processing directory: {directory_path}")
-        files = [f for f in os.listdir(directory_path) if f.endswith(".txt")]
-        total_files = len(files)
-        
-        print(f"Found {total_files} file(s) to process.\n")
-        
-        for index, filename in enumerate(files, start=1):
-            file_path = os.path.join(directory_path, filename)
-            print(f"Processing file {index}/{total_files}: {file_path}")
-            anonymizer.anonymize_text_file(file_path, custom_word=custom_word)
-            self.print_progress(index, total_files)
+        analysis_results = analyzer.analyze_text(content, language=args.language)
+        if analysis_results:
+            anonymized_content, replaced_items = anonymizer.anonymize_text(content, analysis_results, language=args.language)
+            if anonymized_content:
+                anonymizer.save_anonymized_file(args.file_path, anonymized_content)
+                anonymizer.output_replacements(replaced_items)
+            else:
+                logging.error("Anonymization failed. No changes were made.")
+        else:
+            logging.error("Analysis failed. No changes were made.")
 
-    def print_progress(self, current, total):
-        percent = (current / total) * 100
-        bar_length = 40
-        block = int(round(bar_length * percent / 100))
-        progress_bar = "#" * block + "-" * (bar_length - block)
-        print(f"\rProgress: [{progress_bar}] {percent:.2f}% ({current}/{total})", end="\r")
-        
-        if current == total:
-            print("\nProcessing complete!")
+    def load_text_file(self, file_path):
+        logging.info(f"Loading text from file: {file_path}")
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+            logging.info("Text loaded successfully.")
+            return content
+        except FileNotFoundError:
+            logging.error(f"File not found at {file_path}")
+            return None
+        except Exception as e:
+            logging.error(f"Error loading file: {str(e)}")
+            return None
+
+    def anonymize_directory(self, directory_path, custom_word, analyzer, anonymizer, language):
+        logging.info(f"Processing directory: {directory_path}")
+        for root, _, files in os.walk(directory_path):
+            for file in files:
+                if file.endswith('.txt'):
+                    file_path = os.path.join(root, file)
+                    logging.info(f"\nProcessing file: {file_path}")
+                    self.process_text(argparse.Namespace(file_path=file_path, replace=custom_word, language=language), analyzer, anonymizer)
+
