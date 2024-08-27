@@ -1,0 +1,61 @@
+name: Generate CSR and Create PR
+
+on:
+  push:
+    branches:
+      - main, test-workflow
+
+jobs:
+  generate-csr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Set Variables
+        id: vars
+        run: |
+          echo "REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))" >> $GITHUB_ENV
+          echo "CURRENT_BRANCH=$(git branch --show-current)" >> $GITHUB_ENV
+          echo "CSR_FILE=${{ env.REPO_NAME }}.csr" >> $GITHUB_ENV
+          echo "KEY_FILE=${{ env.REPO_NAME }}.key" >> $GITHUB_ENV
+          echo "CERT_DIR=nextcloud/certificates" >> $GITHUB_ENV
+          echo "GITHUB_EMAIL=markwesterweel@conduction.nl" >> $GITHUB_ENV
+
+      - name: Create Certificates Directory
+        run: mkdir -p ${{ env.CERT_DIR }}
+
+      - name: Generate CSR and Private Key
+        run: |
+          openssl req -nodes -newkey rsa:4096 -keyout ${{ env.CERT_DIR }}/${{ env.KEY_FILE }} -out ${{ env.CERT_DIR }}/${{ env.CSR_FILE }} -subj "/CN=${{ env.REPO_NAME }}"
+
+      - name: Send Private Key via Email
+        env:
+          EMAIL: ${{ env.GITHUB_EMAIL }}
+        run: |
+          echo "Please find the attached private key." | mail -s "Your Private Key for ${{ env.REPO_NAME }}" -A ${{ env.CERT_DIR }}/${{ env.KEY_FILE }} $EMAIL
+
+      - name: Clone Nextcloud Certificate Requests Repo
+        run: |
+          git clone https://github.com/nextcloud/app-certificate-requests.git
+          cd app-certificate-requests
+          mkdir -p ${{ env.REPO_NAME }}
+          cp ../${{ env.CERT_DIR }}/${{ env.CSR_FILE }} ${{ env.REPO_NAME }}/
+
+      - name: Commit and Push CSR
+        run: |
+          cd app-certificate-requests
+          git checkout -b ${{ env.CURRENT_BRANCH }}-csr
+          git add ${{ env.REPO_NAME }}/${{ env.CSR_FILE }}
+          git commit -m "Add CSR file for ${{ env.REPO_NAME }}"
+          git push origin ${{ env.CURRENT_BRANCH }}-csr
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          head: ${{ env.CURRENT_BRANCH }}-csr
+          title: "Add CSR file for ${{ env.REPO_NAME }}"
+          body: "This PR includes the CSR file generated for ${{ env.REPO_NAME }}."
