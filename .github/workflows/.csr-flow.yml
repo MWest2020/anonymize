@@ -1,7 +1,7 @@
 name: Generate Certificate Request and Create Pull Request
 
 on:
-  workflow_dispatch  # Adjust this if you use a different default branch
+  workflow_dispatch  
 
 jobs:
   generate-csr-and-pr:
