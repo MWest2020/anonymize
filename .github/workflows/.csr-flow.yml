@@ -6,9 +6,11 @@ on:
 jobs:
   generate-csr-and-pr:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Get repository name
         id: repo-name
@@ -49,8 +51,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
 
-      - name: Remove private key from repo
+      - name: Remove private key
         run: rm .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.csr
+          git commit -m "Add CSR for ${{ steps.repo-name.outputs.repo }}"
+          git push
 
       - name: Fork target repository
         uses: actions/github-script@v6
