@@ -1,10 +1,10 @@
-name: Generate Certificate Request and Create Pull Request
+name: Generate Certificate Request and Send Private Key
 
 on:
   workflow_dispatch
 
 jobs:
-  generate-csr-and-pr:
+  generate-csr-and-send-key:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -16,11 +16,14 @@ jobs:
         id: repo-name
         run: echo "repo=${GITHUB_REPOSITORY#*/}" >> $GITHUB_OUTPUT
 
-      - name: Create directories
+      - name: Create directories if not exist
         run: |
-          mkdir -p .nextcloud/certificates
-          ls -R .nextcloud
-          pwd
+          if [ ! -d ".nextcloud/certificates" ]; then
+            mkdir -p .nextcloud/certificates
+            echo "Created .nextcloud/certificates directory"
+          else
+            echo ".nextcloud/certificates directory already exists"
+          fi
 
       - name: Generate certificate request and private key
         run: |
@@ -28,24 +31,16 @@ jobs:
           -keyout .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key \
           -out .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.csr \
           -subj "/CN=${{ steps.repo-name.outputs.repo }}"
-          ls -l .nextcloud/certificates/
 
-      - name: Debug info
-        run: |
-          echo "Current directory:"
-          pwd
-          echo "Contents of .nextcloud/certificates:"
-          ls -l .nextcloud/certificates/
-          echo "CSR contents:"
-          cat .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.csr
-
-      - name: Send debug info via Slack
+      - name: Send private key via Slack
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
           text: |
-            Debug info for ${{ steps.repo-name.outputs.repo }}:
-            ${{ steps.debug-info.outputs.stdout }}
+            Here is the private key for ${{ steps.repo-name.outputs.repo }}, store this in passworks:
+            ```
+            $(cat .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key)
+            ```
           fields: repo,message,commit,author,action,eventName,ref,workflow
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -54,59 +49,10 @@ jobs:
       - name: Remove private key
         run: rm .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key
 
-      - name: Commit and push changes
+      - name: Commit and push CSR
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.csr
           git commit -m "Add CSR for ${{ steps.repo-name.outputs.repo }}"
           git push
-
-      - name: Fork target repository
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{secrets.GITHUB_TOKEN}}
-          script: |
-            await github.rest.repos.createFork({
-              owner: 'nextcloud',
-              repo: 'app-certificate-requests',
-            })
-
-      - name: Checkout forked repository
-        uses: actions/checkout@v2
-        with:
-          repository: ${{ github.repository_owner }}/app-certificate-requests
-          path: app-certificate-requests
-
-      - name: Copy CSR to forked repo
-        run: |
-          mkdir -p app-certificate-requests/${{ steps.repo-name.outputs.repo }}
-          cp .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.csr app-certificate-requests/${{ steps.repo-name.outputs.repo }}/
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v3
-        with:
-          token: ${{secrets.GITHUB_TOKEN}}
-          path: app-certificate-requests
-          commit-message: Add CSR for ${{ steps.repo-name.outputs.repo }}
-          title: Add CSR for ${{ steps.repo-name.outputs.repo }}
-          body: |
-            This PR adds a Certificate Signing Request (CSR) for ${{ steps.repo-name.outputs.repo }}.
-            
-            Original repository: ${{ github.server_url }}/${{ github.repository }}
-          branch: add-csr-${{ steps.repo-name.outputs.repo }}
-          base: main
-
-      - name: Send workflow completion notification via Slack
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          text: |
-            CSR workflow for ${{ steps.repo-name.outputs.repo }} is complete.
-            - CSR generated
-            - Private key securely stored
-            - Pull request created in the Nextcloud app-certificate-requests repository
-          fields: repo,message,commit,author,action,eventName,ref,workflow
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
