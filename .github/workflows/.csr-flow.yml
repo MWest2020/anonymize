@@ -33,18 +33,14 @@ jobs:
           -subj "/CN=${{ steps.repo-name.outputs.repo }}"
 
       - name: Send private key via Slack
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          text: |
-            Here is the private key for ${{ steps.repo-name.outputs.repo }}, store this in passworks:
-            ```
-            $(cat .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key)
-            ```
-          fields: repo,message,commit,author,action,eventName,ref,workflow
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+          PRIVATE_KEY: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PRIVATE_KEY=$(cat .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key)
+          curl -X POST -H 'Content-type: application/json' --data '{
+            "text": "Here is the private key for ${{ steps.repo-name.outputs.repo }}, store this in passworks:\n```\n'"${PRIVATE_KEY}"'\n```"
+          }' $SLACK_WEBHOOK_URL
 
       - name: Remove private key
         run: rm .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key
