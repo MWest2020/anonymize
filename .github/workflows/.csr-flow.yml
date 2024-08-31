@@ -1,7 +1,7 @@
 name: Generate Certificate Request and Create Pull Request
 
 on:
-  workflow_dispatch  
+  workflow_dispatch  # Adjust this if you use a different default branch
 
 jobs:
   generate-csr-and-pr:
@@ -29,8 +29,8 @@ jobs:
         with:
           server_address: smtp.gmail.com
           server_port: 465
-          username: ${{secrets.USER_EMAIL_USER}}
-          password: ${{secrets.USER_EMAIL_PASS}}
+          username: ${{ secrets.USER_EMAIL_USER }}
+          password: ${{ secrets.USER_EMAIL_PASS }}
           subject: Private Key for ${{ steps.repo-name.outputs.repo }}
           body: Please find attached the private key for ${{ steps.repo-name.outputs.repo }}
           to: markwesterweel@conduction.nl
