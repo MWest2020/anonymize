@@ -1,66 +1,76 @@
-name: Generate CSR and Create PR
+name: Generate Certificate Request and Create Pull Request
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-      - test-workflow
+  workflow_dispatch  # Adjust this if you use a different default branch
 
 jobs:
-  generate-csr:
+  generate-csr-and-pr:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
+      - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Set Variables
-        id: vars
+      - name: Get repository name
+        id: repo-name
+        run: echo "::set-output name=repo::${GITHUB_REPOSITORY#*/}"
+
+      - name: Create directories
+        run: mkdir -p .nextcloud/certificates
+
+      - name: Generate certificate request and private key
         run: |
-          echo "REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))" >> $GITHUB_ENV
-          echo "CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_ENV
-          echo "CSR_FILE=${{ env.REPO_NAME }}.csr" >> $GITHUB_ENV
-          echo "KEY_FILE=${{ env.REPO_NAME }}.key" >> $GITHUB_ENV
-          echo "CERT_DIR=nextcloud/certificates" >> $GITHUB_ENV
-          echo "GITHUB_EMAIL=markwesterweel@conduction.nl" >> $GITHUB_ENV
+          openssl req -nodes -newkey rsa:4096 \
+          -keyout .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key \
+          -out .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.csr \
+          -subj "/CN=${{ steps.repo-name.outputs.repo }}"
 
-      - name: Create Certificates Directory
-        run: mkdir -p ${{ env.CERT_DIR }}
+      -       - name: Send private key via email
+        uses: dawidd6/action-send-mail@v2
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{secrets.USER_EMAIL_USER}}
+          password: ${{secrets.USER_EMAIL_PASS}}
+          subject: Private Key for ${{ steps.repo-name.outputs.repo }}
+          body: Please find attached the private key for ${{ steps.repo-name.outputs.repo }}
+          to: markwesterweel@conduction.nl
+          from: GitHub Actions
+          attachments: .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key
 
-      - name: Generate CSR and Private Key
+      - name: Remove private key from repo
+        run: rm .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key
+
+      - name: Fork target repository
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            await github.rest.repos.createFork({
+              owner: 'nextcloud',
+              repo: 'app-certificate-requests',
+            })
+
+      - name: Checkout forked repository
+        uses: actions/checkout@v2
+        with:
+          repository: ${{ github.repository_owner }}/app-certificate-requests
+          path: app-certificate-requests
+
+      - name: Copy CSR to forked repo
         run: |
-          openssl req -nodes -newkey rsa:4096 -keyout ${{ env.CERT_DIR }}/${{ env.KEY_FILE }} -out ${{ env.CERT_DIR }}/${{ env.CSR_FILE }} -subj "/CN=${{ env.REPO_NAME }}"
-
-      - name: Install mailutils
-        run: sudo apt-get update && sudo apt-get install -y mailutils
-
-      - name: Send Private Key via Email
-        env:
-          EMAIL: ${{ env.GITHUB_EMAIL }}
-        run: |
-          echo "Please find the attached private key." | mail -s "Your Private Key for ${{ env.REPO_NAME }}" -A ${{ env.CERT_DIR }}/${{ env.KEY_FILE }} $EMAIL
-
-      - name: Clone Nextcloud Certificate Requests Repo
-        run: |
-          git clone https://github.com/nextcloud/app-certificate-requests.git
-          cd app-certificate-requests
-          mkdir -p ${{ env.REPO_NAME }}
-          cp ../${{ env.CERT_DIR }}/${{ env.CSR_FILE }} ${{ env.REPO_NAME }}/
-
-      - name: Commit and Push CSR
-        run: |
-          cd app-certificate-requests
-          git checkout -b ${{ env.CURRENT_BRANCH }}-csr
-          git add ${{ env.REPO_NAME }}/${{ env.CSR_FILE }}
-          git commit -m "Add CSR file for ${{ env.REPO_NAME }}"
-          git push origin ${{ env.CURRENT_BRANCH }}-csr
+          mkdir -p app-certificate-requests/${{ steps.repo-name.outputs.repo }}
+          cp .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.csr app-certificate-requests/${{ steps.repo-name.outputs.repo }}/
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{secrets.GITHUB_TOKEN}}
+          path: app-certificate-requests
+          commit-message: Add CSR for ${{ steps.repo-name.outputs.repo }}
+          title: Add CSR for ${{ steps.repo-name.outputs.repo }}
+          body: |
+            This PR adds a Certificate Signing Request (CSR) for ${{ steps.repo-name.outputs.repo }}.
+            
+            Original repository: ${{ github.server_url }}/${{ github.repository }}
+          branch: add-csr-${{ steps.repo-name.outputs.repo }}
           base: main
-          head: ${{ env.CURRENT_BRANCH }}-csr
-          title: "Add CSR file for ${{ env.REPO_NAME }}"
-          body: "This PR includes the CSR file generated for ${{ env.REPO_NAME }}."
