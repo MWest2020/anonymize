@@ -1,7 +1,7 @@
 name: Generate Certificate Request and Create Pull Request
 
 on:
-  workflow_dispatch  # Adjust this if you use a different default branch
+  workflow_dispatch
 
 jobs:
   generate-csr-and-pr:
@@ -12,7 +12,7 @@ jobs:
 
       - name: Get repository name
         id: repo-name
-        run: echo "::set-output name=repo::${GITHUB_REPOSITORY#*/}"
+        run: echo "repo=${GITHUB_REPOSITORY#*/}" >> $GITHUB_OUTPUT
 
       - name: Create directories
         run: mkdir -p .nextcloud/certificates
@@ -24,18 +24,17 @@ jobs:
           -out .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.csr \
           -subj "/CN=${{ steps.repo-name.outputs.repo }}"
 
-      - name: Send private key via email
-        uses: dawidd6/action-send-mail@v2
+      - name: Send private key via Slack
+        uses: 8398a7/action-slack@v3
         with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.EMAIL_USER }}
-          password: ${{ secrets.EMAIL_PASS }}
-          subject: Private Key for ${{ steps.repo-name.outputs.repo }}
-          body: Please find attached the private key for ${{ steps.repo-name.outputs.repo }}
-          to: markwesterweel@conduction.nl
-          from: GitHub Actions
-          attachments: .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key
+          status: ${{ job.status }}
+          text: |
+            Private key for ${{ steps.repo-name.outputs.repo }} has been generated.
+            Please retrieve it from the secure location.
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
 
       - name: Remove private key from repo
         run: rm .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key
@@ -74,3 +73,17 @@ jobs:
             Original repository: ${{ github.server_url }}/${{ github.repository }}
           branch: add-csr-${{ steps.repo-name.outputs.repo }}
           base: main
+
+      - name: Send workflow completion notification via Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            CSR workflow for ${{ steps.repo-name.outputs.repo }} is complete.
+            - CSR generated
+            - Private key securely stored
+            - Pull request created in the Nextcloud app-certificate-requests repository
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
