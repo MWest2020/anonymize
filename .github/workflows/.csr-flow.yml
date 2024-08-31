@@ -15,7 +15,10 @@ jobs:
         run: echo "repo=${GITHUB_REPOSITORY#*/}" >> $GITHUB_OUTPUT
 
       - name: Create directories
-        run: mkdir -p .nextcloud/certificates
+        run: |
+          mkdir -p .nextcloud/certificates
+          ls -R .nextcloud
+          pwd
 
       - name: Generate certificate request and private key
         run: |
@@ -23,14 +26,24 @@ jobs:
           -keyout .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.key \
           -out .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.csr \
           -subj "/CN=${{ steps.repo-name.outputs.repo }}"
+          ls -l .nextcloud/certificates/
 
-      - name: Send private key via Slack
+      - name: Debug info
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Contents of .nextcloud/certificates:"
+          ls -l .nextcloud/certificates/
+          echo "CSR contents:"
+          cat .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.csr
+
+      - name: Send debug info via Slack
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
           text: |
-            Private key for ${{ steps.repo-name.outputs.repo }} has been generated.
-            Please retrieve it from the secure location.
+            Debug info for ${{ steps.repo-name.outputs.repo }}:
+            ${{ steps.debug-info.outputs.stdout }}
           fields: repo,message,commit,author,action,eventName,ref,workflow
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
