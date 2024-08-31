@@ -24,7 +24,7 @@ jobs:
           -out .nextcloud/certificates/${{ steps.repo-name.outputs.repo }}.csr \
           -subj "/CN=${{ steps.repo-name.outputs.repo }}"
 
-      -       - name: Send private key via email
+      - name: Send private key via email
         uses: dawidd6/action-send-mail@v2
         with:
           server_address: smtp.gmail.com
